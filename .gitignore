@@ -1,0 +1,12 @@
+# Build output
+build/
+build-test/
+*.obj
+*.res
+*.pdb
+*.ilk
+*.bmp
+
+# Other people's reference drawings: kept locally, not redistributed
+schematic.gif
+doubler_layout.png

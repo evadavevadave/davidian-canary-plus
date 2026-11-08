@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+@prefix lv2:  <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ui:   <http://lv2plug.in/ns/extensions/ui#> .
+
+<urn:davidian:canary-plus>
+	a lv2:Plugin ;
+	lv2:binary <canary-plus.dll> ;
+	rdfs:seeAlso <canary-plus.ttl> ;
+	ui:ui <urn:davidian:canary-plus#ui> .
+
+<urn:davidian:canary-plus#ui>
+	a ui:WindowsUI ;
+	ui:binary <canary-plus_ui.dll> ;
+	lv2:requiredFeature ui:parent ;
+	lv2:optionalFeature ui:resize , ui:idleInterface ;
+	lv2:extensionData ui:idleInterface .
