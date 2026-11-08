@@ -20,9 +20,25 @@ set LV2_PATH=%CD%\build
 build-test\lilv_check.exe
 ```
 
+## Download
+
+A ready-built bundle for 64-bit Windows is in [`release/canary-plus-1.0.0-win64.zip`](release/canary-plus-1.0.0-win64.zip). It was built with `build.bat` from the commit tagged `v1.0.0` and passes all the tests above.
+
+The zip holds one `canary-plus.lv2` folder:
+
+- The plugin DLL
+- The GUI DLL
+- The two `.ttl` files
+- `LICENSE.txt`
+- `AI-DISCLOSURE.txt`
+
+Unzip it into an LV2 folder as described below.
+
+This repository is the source code for that build, as the GPL requires. If you pass the zip on, pass on a link to this repository with it.
+
 ## Install
 
-Copy the whole `build/canary-plus.lv2` folder (the plugin and GUI libraries and the two .ttl files) into one of the standard LV2 folders:
+Copy the whole `canary-plus.lv2` folder, from the zip or from `build/` after building, into one of the standard LV2 folders:
 
 - Windows: `%APPDATA%\LV2` (current user) or `%COMMONPROGRAMFILES%\LV2` (all users)
 - Linux: `~/.lv2` (current user) or `/usr/local/lib/lv2` (all users)
