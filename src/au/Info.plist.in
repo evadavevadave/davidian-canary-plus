@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Info.plist for canary-plus.component. CMake fills in the version and names. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>${AU_EXECUTABLE}</string>
+	<key>CFBundleIdentifier</key>
+	<string>${AU_BUNDLE_ID}</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Canary Plus</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>${PROJECT_VERSION}</string>
+	<key>CFBundleVersion</key>
+	<string>${PROJECT_VERSION}</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
+	<key>AudioComponents</key>
+	<array>
+		<dict>
+			<key>type</key>
+			<string>aufx</string>
+			<key>subtype</key>
+			<string>Cnry</string>
+			<key>manufacturer</key>
+			<string>Dvdn</string>
+			<key>name</key>
+			<string>Davidian: Canary Plus</string>
+			<key>description</key>
+			<string>Op-amp gain stage driving a diode clipper</string>
+			<key>factoryFunction</key>
+			<string>CanaryPlusAUFactory</string>
+			<key>version</key>
+			<integer>${AU_VERSION_INT}</integer>
+			<key>sandboxSafe</key>
+			<true/>
+			<key>tags</key>
+			<array>
+				<string>Effects</string>
+				<string>Distortion</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

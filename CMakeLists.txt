@@ -11,13 +11,21 @@
 #   -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
 cmake_minimum_required(VERSION 3.16)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Oldest macOS the build runs on")
-project(canary_plus VERSION 1.1.0 LANGUAGES C)
+project(canary_plus VERSION 1.2.0 LANGUAGES C)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
 option(LILV_CHECK "Also check the bundle with the lilv LV2 parser (loads lilv at run time)" OFF)
+option(VST3 "Also build the VST3 version (Windows; downloads the VST3 SDK)" ${WIN32})
+option(AU "Also build the Audio Unit version (macOS; downloads Apple's AudioUnitSDK)" ${APPLE})
+if(VST3 AND NOT WIN32)
+    message(FATAL_ERROR "The VST3 version is built for Windows only")
+endif()
+if(AU AND NOT APPLE)
+    message(FATAL_ERROR "Audio Units are macOS only")
+endif()
 
 # ---- Platform: library suffix and GUI type ----
 if(WIN32)
@@ -103,6 +111,48 @@ endforeach()
 message(STATUS "Davidian Canary Plus ${PROJECT_VERSION}: GPL-3.0-or-later, written with AI assistance "
                "(Claude, by Anthropic); see AI-DISCLOSURE.txt")
 
+# ---- Shared parts of the VST3 and Audio Unit versions ----
+# The circuit model (plugin.c, with its LV2 entry point kept internal) and the
+# panel, built as C here so the plugin SDKs' compiler options don't reach them.
+enable_testing()
+if(VST3 OR AU)
+    add_library(canary_dsp STATIC src/plugin.c)
+    target_compile_definitions(canary_dsp PUBLIC DP_EMBEDDED)
+    set_target_properties(canary_dsp PROPERTIES C_STANDARD 11 POSITION_INDEPENDENT_CODE ON
+                                                C_VISIBILITY_PRESET hidden)
+    if(MSVC)
+        target_compile_options(canary_dsp PRIVATE /W4 /fp:precise)
+    else()
+        target_compile_options(canary_dsp PRIVATE -Wall -Wextra)
+        target_link_libraries(canary_dsp PUBLIC m)
+    endif()
+
+    add_library(canary_editor STATIC src/ui/editor.c)
+    set_target_properties(canary_editor PROPERTIES C_STANDARD 11 POSITION_INDEPENDENT_CODE ON
+                                                   C_VISIBILITY_PRESET hidden OBJC_VISIBILITY_PRESET hidden)
+    if(MSVC)
+        target_compile_options(canary_editor PRIVATE /W4)
+        target_link_libraries(canary_editor PUBLIC user32 gdi32)
+    else()
+        target_compile_options(canary_editor PRIVATE -Wall -Wextra)
+        target_link_libraries(canary_editor PUBLIC m)
+    endif()
+    if(APPLE)
+        set_source_files_properties(src/ui/editor.c PROPERTIES LANGUAGE OBJC)
+        target_compile_options(canary_editor PRIVATE -fno-objc-arc)
+        # Each binary in a process needs its own Objective-C class names.
+        target_compile_definitions(canary_editor PRIVATE PANEL_VIEW_CLASS=DavidianCanaryPlusAUPanel)
+        target_link_libraries(canary_editor PUBLIC "-framework Cocoa")
+    endif()
+endif()
+
+if(VST3)
+    add_subdirectory(src/vst3)
+endif()
+if(AU)
+    add_subdirectory(src/au)
+endif()
+
 # ---- Tests ----
 function(test_program target)
     add_executable(${target} ${ARGN})
@@ -111,8 +161,6 @@ function(test_program target)
         target_link_libraries(${target} PRIVATE m ${CMAKE_DL_LIBS})
     endif()
 endfunction()
-
-enable_testing()
 
 test_program(test_dsp test/test_dsp.c)
 add_test(NAME test_dsp COMMAND test_dsp ${BUNDLE_DIR})

@@ -7,10 +7,17 @@
 
 #include <stdint.h>
 
-#if defined(_WIN32) || defined(__CYGWIN__)
+#if defined(DP_EMBEDDED)
+/* Built into a VST3 or Audio Unit: the LV2 entry point stays internal. */
+#    define LV2_EXPORT
+#elif defined(_WIN32) || defined(__CYGWIN__)
 #    define LV2_EXPORT __declspec(dllexport)
 #else
 #    define LV2_EXPORT __attribute__((visibility("default")))
+#endif
+
+#ifdef __cplusplus
+extern "C" {
 #endif
 
 typedef void *LV2_Handle;
@@ -33,5 +40,12 @@ typedef struct LV2_Descriptor {
     void (*cleanup)(LV2_Handle instance);
     const void *(*extension_data)(const char *uri);
 } LV2_Descriptor;
+
+/* The LV2 entry point (plugin.c). */
+LV2_EXPORT const LV2_Descriptor *lv2_descriptor(uint32_t index);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

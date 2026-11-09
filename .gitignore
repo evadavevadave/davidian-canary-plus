@@ -11,3 +11,5 @@ build-test/
 schematic.gif
 doubler_layout.png
 out/
+deps/
+out-v/
