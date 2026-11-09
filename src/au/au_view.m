@@ -133,3 +133,11 @@ static void au_poll(void* ctx, Editor* ed)
     return [[[AU_VIEW_CLASS alloc] initWithAudioUnit:au] autorelease];
 }
 @end
+
+/* The bundle holding this code, for kAudioUnitProperty_CocoaUI. Asking for the
+ * bundle of a class always finds the component itself, whoever loaded it. */
+CFURLRef canary_au_view_bundle_url(void)
+{
+    NSBundle* b = [NSBundle bundleForClass:[AU_VIEW_FACTORY_CLASS class]];
+    return b ? (CFURLRef)[[b bundleURL] retain] : NULL;
+}

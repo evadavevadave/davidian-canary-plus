@@ -14,6 +14,8 @@
 #include "../params.h"
 #include "au_ids.h"
 
+extern "C" CFURLRef canary_au_view_bundle_url(void); // au_view.m
+
 // plugin.c is real-time safe (no locks, no allocation in run) but, being C, carries
 // no nonblocking annotation for clang to check calls into it against.
 #pragma clang diagnostic ignored "-Wunknown-warning-option"
@@ -197,11 +199,11 @@ public:
     {
         if (id == kAudioUnitProperty_CocoaUI && scope == kAudioUnitScope_Global) {
             // The view's code is in this same bundle; the host loads its factory class.
-            CFBundleRef bundle = CFBundleGetBundleWithIdentifier(CFSTR(AU_BUNDLE_ID));
-            if (!bundle)
+            CFURLRef url = canary_au_view_bundle_url();
+            if (!url)
                 return kAudioUnitErr_InvalidProperty;
             AudioUnitCocoaViewInfo info;
-            info.mCocoaAUViewBundleLocation = CFBundleCopyBundleURL(bundle);
+            info.mCocoaAUViewBundleLocation = url;
             info.mCocoaAUViewClass[0] = CFSTR(AU_VIEW_FACTORY_CLASS_NAME);
             CFRetain(info.mCocoaAUViewClass[0]); // the host releases both
             std::memcpy(data, &info, sizeof info);
