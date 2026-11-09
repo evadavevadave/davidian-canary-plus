@@ -538,7 +538,11 @@ static void test_cpu(void)
         seconds = now_seconds() - t0;
         percent = 100.0 * seconds / 5.0;
         printf("    %-20s %.2f%%\n", cases[c].name, percent);
-        check(percent < 15.0, "under 15% of one core");
+        /* Set NO_CPU_LIMIT when timing means nothing, as under emulation (Rosetta). */
+        if (getenv("NO_CPU_LIMIT"))
+            printf("  [skip] CPU limit (NO_CPU_LIMIT is set)\n");
+        else
+            check(percent < 15.0, "under 15% of one core");
         inst_close(&s);
         free(in);
         free(out);

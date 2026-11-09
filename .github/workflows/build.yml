@@ -58,6 +58,8 @@ jobs:
 
       - name: Test the Intel half of the macOS build (Rosetta)
         if: runner.os == 'macOS'
+        env:
+          NO_CPU_LIMIT: "1" # emulated timing says nothing about real Intel Macs
         run: |
           lipo -info out/lv2/canary-plus.lv2/canary-plus.dylib out/lv2/canary-plus.lv2/canary-plus_ui.dylib
           arch -x86_64 out/test_dsp out/lv2/canary-plus.lv2
