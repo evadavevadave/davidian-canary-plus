@@ -10,3 +10,4 @@ build-test/
 # Other people's reference drawings: kept locally, not redistributed
 schematic.gif
 doubler_layout.png
+out/

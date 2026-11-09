@@ -1,13 +1,18 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* Loads the built DLL through its LV2 entry point and checks its behaviour.
+/* Loads the built plugin library through its LV2 entry point and checks its behaviour.
  * Usage: test_dsp <bundle directory> */
+#if defined(_WIN32)
+#    define _CRT_SECURE_NO_WARNINGS
+#elif !defined(_POSIX_C_SOURCE)
+#    define _POSIX_C_SOURCE 200809L
+#endif
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <windows.h>
 
 #include "../src/lv2_abi.h"
+#include "platform.h"
 
 #define PI 3.14159265358979323846
 #define LATENCY 32
@@ -525,15 +530,12 @@ static void test_cpu(void)
         const size_t n = (size_t)rate * 5;
         float *in = make_sine(n, 220.0, rate, 1.0);
         float *out = (float *)malloc(n * sizeof(float));
-        LARGE_INTEGER f, t0, t1;
         Inst s;
-        double seconds, percent;
+        double t0, seconds, percent;
         inst_open(&s, rate, 1.0f, 1.0f, cases[c].diode);
-        QueryPerformanceFrequency(&f);
-        QueryPerformanceCounter(&t0);
+        t0 = now_seconds();
         inst_run(&s, in, out, n, 256);
-        QueryPerformanceCounter(&t1);
-        seconds = (double)(t1.QuadPart - t0.QuadPart) / (double)f.QuadPart;
+        seconds = now_seconds() - t0;
         percent = 100.0 * seconds / 5.0;
         printf("    %-20s %.2f%%\n", cases[c].name, percent);
         check(percent < 15.0, "under 15% of one core");
@@ -554,7 +556,7 @@ static void test_ttl(const char *bundle)
     int i, ok = 1, open_br = 0, close_br = 0;
     char *p;
     printf("TTL port table\n");
-    snprintf(path, sizeof(path), "%s\\canary-plus.ttl", bundle);
+    snprintf(path, sizeof(path), "%s/canary-plus.ttl", bundle);
     fp = fopen(path, "rb");
     if (!fp) {
         check(0, "open canary-plus.ttl");
@@ -588,19 +590,19 @@ static void test_ttl(const char *bundle)
 int main(int argc, char **argv)
 {
     char dll[1024];
-    HMODULE lib;
+    Lib lib;
     const LV2_Descriptor *(*get)(uint32_t);
     if (argc < 2) {
         fprintf(stderr, "usage: test_dsp <bundle dir>\n");
         return 2;
     }
-    snprintf(dll, sizeof(dll), "%s\\canary-plus.dll", argv[1]);
-    lib = LoadLibraryA(dll);
+    snprintf(dll, sizeof(dll), "%s/canary-plus" LIB_SUFFIX, argv[1]);
+    lib = lib_open(dll);
     if (!lib) {
-        fprintf(stderr, "could not load %s (error %lu)\n", dll, GetLastError());
+        fprintf(stderr, "could not load %s (%s)\n", dll, lib_error());
         return 2;
     }
-    get = (const LV2_Descriptor *(*)(uint32_t))GetProcAddress(lib, "lv2_descriptor");
+    *(void **)&get = lib_sym(lib, "lv2_descriptor");
     if (!get) {
         fprintf(stderr, "lv2_descriptor is not exported\n");
         return 2;
@@ -619,6 +621,6 @@ int main(int argc, char **argv)
     test_ttl(argv[1]);
 
     printf("\n%s (%d failed)\n", g_fail ? "FAILED" : "ALL PASSED", g_fail);
-    FreeLibrary(lib);
+    lib_close(lib);
     return g_fail ? 1 : 0;
 }

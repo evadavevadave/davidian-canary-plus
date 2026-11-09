@@ -1,10 +1,28 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
-/* Checks the installed bundle with the real LV2 parser (lilv) that ships with Ardour 9. */
+/* Checks the built bundle with the real LV2 parser, lilv, loaded at run time so no lilv
+ * headers are needed. Set LV2_PATH to the folder holding the bundle.
+ * Usage: lilv_check [path to the lilv library]
+ * Without an argument it tries Ardour 9's copy on Windows and the system library elsewhere. */
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#    define _POSIX_C_SOURCE 200809L
+#endif
 #include <stdio.h>
 #include <math.h>
-#include <windows.h>
+
+#include "platform.h"
 
 #define PLUGIN_ID "urn:davidian:canary-plus"
+
+static const char* const LILV_NAMES[] = {
+#if defined(_WIN32)
+    "C:\\Program Files\\Ardour9\\bin\\lilv-0.dll", "lilv-0.dll",
+#elif defined(__APPLE__)
+    "liblilv-0.dylib", "liblilv-0.0.dylib", "/opt/homebrew/lib/liblilv-0.dylib", "/usr/local/lib/liblilv-0.dylib",
+#else
+    "liblilv-0.so.0", "liblilv-0.so",
+#endif
+    NULL
+};
 
 typedef void W; typedef void N; typedef void Pl; typedef void P; typedef void Po; typedef void SPs;
 typedef struct { const void *d; void *h; void *pimpl; } LI;
@@ -19,15 +37,21 @@ typedef struct {
     const void *(*ext)(const char *);
 } D;
 
-#define SYM(ret, name, ...) ret (*name)(__VA_ARGS__) = (ret (*)(__VA_ARGS__))GetProcAddress(lib, #name); \
+#define SYM(ret, name, ...) ret (*name)(__VA_ARGS__) = (ret (*)(__VA_ARGS__))lib_sym(lib, #name); \
     if (!name) { printf("missing %s\n", #name); return 2; }
 
-int main(void)
+int main(int argc, char **argv)
 {
-    HMODULE lib;
-    SetDllDirectoryA("C:\\Program Files\\Ardour9\\bin");
-    lib = LoadLibraryA("lilv-0.dll");
-    if (!lib) { printf("cannot load lilv: %lu\n", GetLastError()); return 2; }
+    Lib lib = NULL;
+    int failed = 0, k;
+#if defined(_WIN32)
+    SetDllDirectoryA("C:\\Program Files\\Ardour9\\bin"); /* lilv's own DLLs sit beside it */
+#endif
+    if (argc > 1)
+        lib = lib_open(argv[1]);
+    for (k = 0; !lib && argc <= 1 && LILV_NAMES[k]; k++)
+        lib = lib_open(LILV_NAMES[k]);
+    if (!lib) { printf("cannot load lilv: %s\n", lib_error()); return 2; }
     {
     SYM(W *, lilv_world_new, void)
     SYM(void, lilv_world_load_all, W *)
@@ -67,16 +91,19 @@ int main(void)
     p = lilv_plugins_get_by_uri(all, u);
     if (!p) { printf("FAIL: plugin not found\n"); return 1; }
     printf("verify: %s\n", lilv_plugin_verify(p) ? "ok" : "FAILED");
+    if (!lilv_plugin_verify(p)) failed++;
     printf("name: %s\n", lilv_node_as_string(lilv_plugin_get_name(p)));
     printf("class: %s\n", lilv_node_as_string(lilv_plugin_class_get_label(lilv_plugin_get_class(p))));
     printf("binary: %s\n", lilv_node_as_string(lilv_plugin_get_library_uri(p)));
     {
         void *uis = lilv_plugin_get_uis(p);
         printf("GUIs found: %u\n", uis ? lilv_uis_size(uis) : 0);
+        if (!uis || lilv_uis_size(uis) != 1) failed++;
     }
     printf("latency port: %s %u\n", lilv_plugin_has_latency(p) ? "yes" : "no",
            lilv_plugin_has_latency(p) ? lilv_plugin_get_latency_port_index(p) : 0);
     n = lilv_plugin_get_num_ports(p);
+    if (n != 9) { printf("FAIL: expected 9 ports, found %u\n", n); failed++; }
     for (i = 0; i < n; i++) {
         const Po *po = lilv_plugin_get_port_by_index(p, i);
         N *d = 0, *lo = 0, *hi = 0;
@@ -92,19 +119,21 @@ int main(void)
         LI *inst = lilv_plugin_instantiate(p, 48000.0, NULL);
         float in[4800], out[4800], dist = 1, vol = 1, diode = 0, volts = 1, en = 1, lat = -1, peak = 0;
         const D *de;
-        int k;
+        int j;
         if (!inst) { printf("FAIL: instantiate\n"); return 1; }
         de = (const D *)inst->d;
-        for (k = 0; k < 4800; k++) in[k] = (float)sin(2 * 3.14159265 * 500 * k / 48000.0);
+        for (j = 0; j < 4800; j++) in[j] = (float)sin(2 * 3.14159265 * 500 * j / 48000.0);
         de->connect_port(inst->h, 0, in); de->connect_port(inst->h, 1, out);
         de->connect_port(inst->h, 2, &dist); de->connect_port(inst->h, 3, &vol);
         de->connect_port(inst->h, 4, &diode); de->connect_port(inst->h, 5, &volts);
         de->connect_port(inst->h, 6, &en); de->connect_port(inst->h, 7, &lat);
         de->activate(inst->h);
         de->run(inst->h, 4800);
-        for (k = 2400; k < 4800; k++) if (fabs(out[k]) > peak) peak = (float)fabs(out[k]);
+        for (j = 2400; j < 4800; j++) if (fabs(out[j]) > peak) peak = (float)fabs(out[j]);
         printf("instantiated through lilv: latency %.0f, peak %.3f\n", lat, peak);
+        if (lat != 32.0f || !(peak > 0.05f)) failed++;
     }
     }
-    return 0;
+    printf(failed ? "\n%d FAILED\n" : "\nAll passed\n", failed);
+    return failed ? 1 : 0;
 }

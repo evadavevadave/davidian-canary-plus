@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* LV2 GUI for the Davidian Canary Plus: the LV2 UI entry points plus a thin window layer
- * for Win32 (ui:WindowsUI) and X11 (ui:X11UI). Everything else is in panel.h, which knows
- * nothing about windows. The UI ABI is declared here so no LV2 SDK is needed. */
+ * for Win32 (ui:WindowsUI), Cocoa (ui:CocoaUI, macOS) and X11 (ui:X11UI, Linux and BSD).
+ * Everything else is in panel.h, which knows nothing about windows. The UI ABI is
+ * declared here so no LV2 SDK is needed. */
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -190,8 +191,146 @@ static void ui_redraw(UI* ui)
 /* The window's own timer drives redraws, so idle has nothing to do. */
 static int window_idle(UI* ui) { ui_redraw(ui); return 0; }
 
+/* ---- Window layer: Cocoa (macOS). The build compiles this file as Objective-C there. ---- */
+#elif defined(__APPLE__)
+#    import <Cocoa/Cocoa.h>
+#    if __has_feature(objc_arc)
+#        error "Build without ARC: the UI struct holds plain object pointers."
+#    endif
+
+/* The class name carries the plugin's name, so it can't clash with another plugin's view. */
+@interface DavidianCanaryPlusView : NSView {
+@public
+    UI* ui;
+    NSTimer* timer;
+}
+@end
+
+struct UI {
+    Panel panel;
+    LV2UI_Write_Function write;
+    LV2UI_Controller controller;
+    DavidianCanaryPlusView* view;
+    CGColorSpaceRef space;
+};
+
+static NSPoint panel_point(NSView* view, NSEvent* e)
+{
+    return [view convertPoint:[e locationInWindow] fromView:nil];
+}
+
+@implementation DavidianCanaryPlusView
+- (BOOL)isFlipped { return YES; } /* top-left origin, like the panel */
+- (BOOL)isOpaque { return YES; }
+- (BOOL)acceptsFirstMouse:(NSEvent*)e { (void)e; return YES; }
+- (BOOL)acceptsFirstResponder { return YES; }
+
+- (void)drawRect:(NSRect)dirty_rect
+{
+    CGContextRef cg;
+    CGDataProviderRef data;
+    CGImageRef img;
+    (void)dirty_rect;
+    if (!ui)
+        return;
+    if (ui->panel.dirty)
+        panel_draw(&ui->panel);
+    cg = [[NSGraphicsContext currentContext] CGContext];
+    /* Pixels are 0x00RRGGBB words, so they read as BGRX bytes in memory. */
+    data = CGDataProviderCreateWithData(NULL, ui->panel.px, (size_t)PANEL_W * PANEL_H * 4, NULL);
+    img = CGImageCreate(PANEL_W, PANEL_H, 8, 32, PANEL_W * 4, ui->space,
+                        kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Little, data, NULL, false,
+                        kCGRenderingIntentDefault);
+    CGContextSaveGState(cg);
+    CGContextTranslateCTM(cg, 0, PANEL_H); /* undo the flip: images draw bottom-up */
+    CGContextScaleCTM(cg, 1, -1);
+    CGContextDrawImage(cg, CGRectMake(0, 0, PANEL_W, PANEL_H), img);
+    CGContextRestoreGState(cg);
+    CGImageRelease(img);
+    CGDataProviderRelease(data);
+}
+
+- (void)mouseDown:(NSEvent*)e
+{
+    const NSPoint p = panel_point(self, e);
+    panel_mouse_down(&ui->panel, (float)p.x, (float)p.y, [e clickCount] == 2);
+    ui_redraw(ui);
+}
+
+- (void)mouseDragged:(NSEvent*)e
+{
+    const NSPoint p = panel_point(self, e);
+    panel_mouse_move(&ui->panel, (float)p.x, (float)p.y, ([e modifierFlags] & NSEventModifierFlagShift) != 0);
+    ui_redraw(ui);
+}
+
+- (void)mouseUp:(NSEvent*)e
+{
+    (void)e;
+    panel_mouse_up(&ui->panel);
+    ui_redraw(ui);
+}
+
+- (void)scrollWheel:(NSEvent*)e
+{
+    const NSPoint p = panel_point(self, e);
+    /* Trackpads report pixels, mouse wheels report lines; the panel wants notches. */
+    const CGFloat dy = [e hasPreciseScrollingDeltas] ? [e scrollingDeltaY] / 10.0 : [e scrollingDeltaY];
+    if (dy != 0)
+        panel_wheel(&ui->panel, (float)p.x, (float)p.y, (float)dy, ([e modifierFlags] & NSEventModifierFlagShift) != 0);
+    ui_redraw(ui);
+}
+
+- (void)tick:(NSTimer*)t
+{
+    (void)t;
+    ui_redraw(ui); /* picks up host updates such as the clip lamp */
+}
+@end
+
+static int window_open(UI* ui, void* parent)
+{
+    ui->space = CGColorSpaceCreateDeviceRGB();
+    ui->view = [[DavidianCanaryPlusView alloc] initWithFrame:NSMakeRect(0, 0, PANEL_W, PANEL_H)];
+    if (!ui->view) {
+        CGColorSpaceRelease(ui->space);
+        return 0;
+    }
+    ui->view->ui = ui;
+    ui->view->timer = [NSTimer timerWithTimeInterval:0.033 target:ui->view selector:@selector(tick:)
+                                            userInfo:nil repeats:YES];
+    [[NSRunLoop currentRunLoop] addTimer:ui->view->timer forMode:NSRunLoopCommonModes];
+    if (parent)
+        [(NSView*)parent addSubview:ui->view];
+    return 1;
+}
+
+static void window_close(UI* ui)
+{
+    if (!ui->view)
+        return;
+    [ui->view->timer invalidate]; /* the timer holds a reference to the view */
+    ui->view->timer = nil;
+    ui->view->ui = NULL;
+    [ui->view removeFromSuperview];
+    [ui->view release];
+    ui->view = nil;
+    CGColorSpaceRelease(ui->space);
+}
+
+static void* window_widget(UI* ui) { return (void*)ui->view; }
+
+static void ui_redraw(UI* ui)
+{
+    if (ui && ui->view && ui->panel.dirty)
+        [ui->view setNeedsDisplay:YES];
+}
+
+/* The view's own timer drives redraws, so idle has nothing to do. */
+static int window_idle(UI* ui) { ui_redraw(ui); return 0; }
+
 /* ---- Window layer: X11 ---- */
-#elif defined(__unix__) && !defined(__APPLE__)
+#elif defined(__unix__)
 #    include <X11/Xlib.h>
 #    include <X11/Xutil.h>
 
@@ -318,7 +457,7 @@ static int window_idle(UI* ui)
 }
 
 #else
-#    error "No window layer for this platform yet (Windows and X11 are supported)."
+#    error "No window layer for this platform: Windows, macOS and X11 are supported."
 #endif
 
 /* ---- LV2 UI entry points ---- */

@@ -4,7 +4,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <xmmintrin.h>
+#include "denormal.h"
 
 #include "lv2_abi.h"
 #include "ports.h"
@@ -120,14 +120,12 @@ static void run(LV2_Handle h, uint32_t n_samples)
     const float *in = p->in;
     float *out = p->out;
     const int factor = p->os.factor;
-    const unsigned int saved_csr = _mm_getcsr();
+    /* Flush denormals to zero while processing, then restore the host's mode. */
+    const FpState saved_fp = denormals_off();
     double dist_target, vol_target, volts_target, mix_target;
     double clip_peak = 0.0;
     int diode_type;
     uint32_t i;
-
-    /* Flush denormals to zero while processing, then restore the host's mode. */
-    _mm_setcsr(saved_csr | 0x8040);
 
     if (p->latency)
         *p->latency = (float)OVERSAMPLE_LATENCY;
@@ -156,7 +154,7 @@ static void run(LV2_Handle h, uint32_t n_samples)
     if (!in || !out) {
         if (p->clip_out)
             *p->clip_out = 0.0f;
-        _mm_setcsr(saved_csr);
+        denormals_restore(saved_fp);
         return;
     }
 
@@ -250,7 +248,7 @@ static void run(LV2_Handle h, uint32_t n_samples)
     if (p->clip_out)
         *p->clip_out = (float)(p->clip_level > 1.0 ? 1.0 : p->clip_level);
 
-    _mm_setcsr(saved_csr);
+    denormals_restore(saved_fp);
 }
 
 static void deactivate(LV2_Handle h)
